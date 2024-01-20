@@ -1,7 +1,8 @@
-from typing import Any, Dict, Optional, Sequence, Tuple, Type
+from typing import Any, Dict, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 import polars as pl
 import pyarrow as pa
+import pyarrow.dataset as ds
 from dagster._core.storage.db_io_manager import (
     DbTypeHandler,
 )
@@ -11,19 +12,35 @@ from dagster_deltalake.handler import (
 )
 from dagster_deltalake.io_manager import DeltaLakeIOManager
 
+PolarsTypes = Union[pl.DataFrame, pl.LazyFrame]
 
-class DeltaLakePolarsTypeHandler(DeltalakeBaseArrowTypeHandler[pl.DataFrame]):
+
+class DeltaLakePolarsTypeHandler(DeltalakeBaseArrowTypeHandler[PolarsTypes]):
     def from_arrow(
-        self, obj: pa.RecordBatchReader, target_type: Type[pl.DataFrame]
-    ) -> pl.DataFrame:
-        return pl.from_arrow(obj)  # type: ignore
+        self, obj: Union[ds.dataset, pa.RecordBatchReader], target_type: Type[PolarsTypes]
+    ) -> PolarsTypes:
+        if isinstance(obj, pa.RecordBatchReader):
+            df = pl.DataFrame(obj.read_all())  
+            if target_type == pl.LazyFrame:
+                ## Maybe allow this but raise a warning that the data has been sliced earlier otherwise it
+                ## would have received a ds.dataset
+                return df.lazy()
+            else:
+                return df 
+        df = pl.scan_pyarrow_dataset(obj)
+        if target_type == pl.DataFrame:
+            return df.collect()
+        else:
+            return df
 
-    def to_arrow(self, obj: pl.DataFrame) -> Tuple[pa.RecordBatchReader, Dict[str, Any]]:
+    def to_arrow(self, obj: PolarsTypes) -> Tuple[pa.RecordBatchReader, Dict[str, Any]]:
+        if isinstance(obj, pl.LazyFrame):
+            obj = obj.collect()
         return obj.to_arrow().to_reader(), {"large_dtypes": True}
 
     @property
     def supported_types(self) -> Sequence[Type[object]]:
-        return [pl.DataFrame]
+        return [pl.DataFrame, pl.LazyFrame]
 
 
 class DeltaLakePolarsIOManager(DeltaLakeIOManager):
