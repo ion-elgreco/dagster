@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Sequence, Tuple, Type, TypeVar, Union
+from typing import Any, Dict, Optional, Sequence, Tuple, Type, Union
 
 import polars as pl
 import pyarrow as pa
@@ -17,16 +17,16 @@ PolarsTypes = Union[pl.DataFrame, pl.LazyFrame]
 
 class DeltaLakePolarsTypeHandler(DeltalakeBaseArrowTypeHandler[PolarsTypes]):
     def from_arrow(
-        self, obj: Union[ds.dataset, pa.RecordBatchReader], target_type: Type[PolarsTypes]
+        self, obj: Union[ds.Dataset, pa.RecordBatchReader], target_type: Type[PolarsTypes]
     ) -> PolarsTypes:
         if isinstance(obj, pa.RecordBatchReader):
-            df = pl.DataFrame(obj.read_all())  
+            df = pl.DataFrame(obj.read_all())
             if target_type == pl.LazyFrame:
                 ## Maybe allow this but raise a warning that the data has been sliced earlier otherwise it
                 ## would have received a ds.dataset
                 return df.lazy()
             else:
-                return df 
+                return df
         df = pl.scan_pyarrow_dataset(obj)
         if target_type == pl.DataFrame:
             return df.collect()

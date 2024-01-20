@@ -80,14 +80,19 @@ def b_df_lazy() -> pl.LazyFrame:
 
 @asset(key_prefix=["my_schema"])
 def b_plus_one_lazy(b_df_lazy: pl.LazyFrame) -> pl.LazyFrame:
-    return b_df_lazy.select(pl.all()+1)
+    return b_df_lazy.select(pl.all() + 1)
 
 
-@pytest.mark.parametrize("asset1,asset2,asset1_path,asset2_path", [
-    (b_df, b_plus_one, "b_df", 'b_plus_one'),
-    (b_df_lazy, b_plus_one_lazy, "b_df_lazy", "b_plus_one_lazy")
-])
-def test_deltalake_io_manager_with_assets(tmp_path, io_manager, asset1, asset2, asset1_path, asset2_path):
+@pytest.mark.parametrize(
+    "asset1,asset2,asset1_path,asset2_path",
+    [
+        (b_df, b_plus_one, "b_df", "b_plus_one"),
+        (b_df_lazy, b_plus_one_lazy, "b_df_lazy", "b_plus_one_lazy"),
+    ],
+)
+def test_deltalake_io_manager_with_assets(
+    tmp_path, io_manager, asset1, asset2, asset1_path, asset2_path
+):
     resource_defs = {"io_manager": io_manager}
 
     # materialize asset twice to ensure that tables get properly deleted
@@ -95,11 +100,11 @@ def test_deltalake_io_manager_with_assets(tmp_path, io_manager, asset1, asset2, 
         res = materialize([asset1, asset2], resources=resource_defs)
         assert res.success
 
-        dt = DeltaTable(os.path.join(tmp_path, "my_schema/"+ asset1_path ))
+        dt = DeltaTable(os.path.join(tmp_path, "my_schema/" + asset1_path))
         out_df = dt.to_pyarrow_table()
         assert out_df["a"].to_pylist() == [1, 2, 3]
 
-        dt = DeltaTable(os.path.join(tmp_path, "my_schema/"+ asset2_path))
+        dt = DeltaTable(os.path.join(tmp_path, "my_schema/" + asset2_path))
         out_df = dt.to_pyarrow_table()
         assert out_df["a"].to_pylist() == [2, 3, 4]
 
@@ -155,6 +160,7 @@ def test_loading_columns(tmp_path, io_manager):
         assert out_df["a"].to_pylist() == [2, 3, 4]
 
         assert out_df.shape[1] == 1
+
 
 @op
 def non_supported_type() -> int:

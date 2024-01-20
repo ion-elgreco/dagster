@@ -40,7 +40,7 @@ ArrowTypes = Union[pa.Table, pa.RecordBatchReader]
 
 class DeltalakeBaseArrowTypeHandler(DbTypeHandler[T], Generic[T]):
     @abstractmethod
-    def from_arrow(self, obj: Union[ds.dataset, pa.RecordBatchReader], target_type: type) -> T:
+    def from_arrow(self, obj: Union[ds.Dataset, pa.RecordBatchReader], target_type: type) -> T:
         pass
 
     @abstractmethod
@@ -140,7 +140,9 @@ class DeltalakeBaseArrowTypeHandler(DbTypeHandler[T], Generic[T]):
 
 
 class DeltaLakePyArrowTypeHandler(DeltalakeBaseArrowTypeHandler[ArrowTypes]):
-    def from_arrow(self, obj: Union[ds.dataset, pa.RecordBatchReader], target_type: Type[ArrowTypes]) -> ArrowTypes:
+    def from_arrow(
+        self, obj: Union[ds.Dataset, pa.RecordBatchReader], target_type: Type[ArrowTypes]
+    ) -> ArrowTypes:
         if isinstance(obj, ds.Dataset):
             obj = obj.scanner().to_reader()
         if target_type == pa.Table:
