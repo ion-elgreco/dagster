@@ -12,6 +12,7 @@ from typing import (
     TypeVar,
     Union,
     cast,
+    Literal
 )
 
 import pyarrow as pa
@@ -80,15 +81,20 @@ class DeltalakeBaseArrowTypeHandler(DbTypeHandler[T], Generic[T]):
         partition_columns = None
 
         if table_slice.partition_dimensions is not None:
-            partition_filters = partition_dimensions_to_dnf(
-                partition_dimensions=table_slice.partition_dimensions,
-                table_schema=delta_schema,
-                str_values=True,
-            )
-            if partition_filters is not None and engine == "rust":
-                raise ValueError(
-                    """Partition dimension with rust engine writer combined is not supported yet, use the default 'pyarrow' engine."""
+            if engine == 'pyarrow':
+                partition_filters = partition_dimensions_to_dnf(
+                    partition_dimensions=table_slice.partition_dimensions,
+                    table_schema=delta_schema,
+                    str_values=True,
                 )
+                predicate = None
+            else:
+                predicate = partition_dimensions_to_predicate(
+                    partition_dimensions=table_slice.partition_dimensions,
+                    table_schema=delta_schema,
+                    str_values=True,
+                )
+                partition_filters = None
             # TODO make robust and move to function
             partition_columns = [dim.partition_expr for dim in table_slice.partition_dimensions]
 
@@ -100,6 +106,7 @@ class DeltalakeBaseArrowTypeHandler(DbTypeHandler[T], Generic[T]):
             partition_filters=partition_filters,
             partition_by=partition_columns,
             engine=engine,
+            predicate=predicate,
             overwrite_schema=metadata.get("overwrite_schema") or overwrite_schema,
             custom_metadata=metadata.get("custom_metadata") or main_custom_metadata,
             writer_properties=WriterProperties(**writerprops)  # type: ignore
@@ -187,16 +194,44 @@ def partition_dimensions_to_dnf(
                 )
                 parts.append(filter_)
             elif field.type.type == "string":
-                parts.append(_value_dnf(partition_dimension, field.type.type, str_values))
+                filter_ = _value_dnf(partition_dimension, field.type.type, str_values)
+                parts.append(filter_)
             else:
                 raise ValueError(f"Unsupported partition type {field.type.type}")
         else:
             raise ValueError(f"Unsupported partition type {field.type}")
-
     return parts if len(parts) > 0 else None
 
+def partition_dimensions_to_predicate(
+    partition_dimensions: Iterable[TablePartitionDimension],
+    table_schema: Schema,
+    str_values: bool = False,
+) -> Optional[str]:
+    parts = []
+    for partition_dimension in partition_dimensions:
+        field = _field_from_schema(partition_dimension.partition_expr, table_schema)
+        if field is None:
+            raise ValueError(
+                f"Field {partition_dimension.partition_expr} is not part of table schema.",
+                "Currently only column names are supported as partition expressions",
+            )
+        if isinstance(field.type, PrimitiveType):
+            if field.type.type in ["timestamp", "date"]:
+                filter_ = _time_window_dnf_to_predicate(_time_window_partition_dnf(
+                    partition_dimension, field.type.type, str_values
+                ))
+                parts.append(filter_)
+            elif field.type.type == "string":
+                filter_ = _value_dnf_to_predicate(_value_dnf(partition_dimension, field.type.type, str_values))
+                parts.append(filter_)
+            else:
+                raise ValueError(f"Unsupported partition type {field.type.type}")
+        else:
+            raise ValueError(f"Unsupported partition type {field.type}")
+    return " AND ".join(parts) if len(parts) > 0 else None
 
-def _value_dnf(table_partition: TablePartitionDimension, data_type: str, str_values: bool):
+
+def _value_dnf(table_partition: TablePartitionDimension, data_type: str, str_values: bool) -> FilterLiteralType:
     # ", ".join(f"'{partition}'" for partition in table_partition.partitions)
     partition = cast(Sequence[str], table_partition.partitions)
     if len(partition) > 1:
@@ -223,6 +258,16 @@ def _time_window_partition_dnf(
 
     return (table_partition.partition_expr, "=", start_dt)
 
+
+def _time_window_dnf_to_predicate(
+    dnf: FilterLiteralType
+) -> str:
+    return f"{dnf[0]} = to_timestamp_micros('{dnf[2]}')"
+
+def _value_dnf_to_predicate(
+    dnf: FilterLiteralType
+) -> str:
+    return f"{dnf[0]} = '{dnf[2]}'"
 
 def _field_from_schema(field_name: str, schema: Schema) -> Optional[DeltaField]:
     for field in schema.fields:
