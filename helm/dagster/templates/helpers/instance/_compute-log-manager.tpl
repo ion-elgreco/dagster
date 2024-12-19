@@ -21,6 +21,10 @@ config:
   storage_account: {{ include "stringSource" $azureBlobComputeLogManagerConfig.storageAccount }}
   container: {{ include "stringSource" $azureBlobComputeLogManagerConfig.container }}
 
+  {{- if $azureBlobComputeLogManagerConfig.secretKey }}
+  secretKey: {{ $azureBlobComputeLogManagerConfig.secretKey | toYaml | nindent 4 }}
+  {{- end }}
+
   {{- if $azureBlobComputeLogManagerConfig.secretCredential }}
   secret_credential: {{ $azureBlobComputeLogManagerConfig.secretCredential | toYaml | nindent 4 }}
   {{- end }}
