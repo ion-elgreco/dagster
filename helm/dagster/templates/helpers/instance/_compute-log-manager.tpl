@@ -22,7 +22,7 @@ config:
   container: {{ include "stringSource" $azureBlobComputeLogManagerConfig.container }}
 
   {{- if $azureBlobComputeLogManagerConfig.secretKey }}
-  secretKey: {{ $azureBlobComputeLogManagerConfig.secretKey | toYaml | nindent 4 }}
+  secret_key: {{ $azureBlobComputeLogManagerConfig.secretKey | toYaml | nindent 4 }}
   {{- end }}
 
   {{- if $azureBlobComputeLogManagerConfig.secretCredential }}
